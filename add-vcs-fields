@@ -1,0 +1,49 @@
+#!/usr/bin/python
+
+import argparse
+import os
+import sys
+import subprocess as ipc
+
+import debian.deb822 as deb822
+
+TEAMS = ['python-modules', 'python-apps']
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--team', choices=TEAMS)
+    parser.add_argument('paths', metavar='PACKAGE-DIRECTORY', nargs='+')
+    options = parser.parse_args()
+    for path in options.paths:
+        print '>>', path
+        if options.team is None:
+            stdout, stderr = ipc.Popen(['svn', 'info', path], stdout=ipc.PIPE, stderr=ipc.PIPE).communicate()
+            if stderr != '':
+                raise RuntimeError(stderr)
+            for team in TEAMS:
+                if ('/' + team) in stdout:
+                    break
+            else:
+                raise RuntimeError('Unknown team')
+        else:
+            team = options.team
+        with open('{base}/debian/control'.format(base=path)) as file:
+            contents = file.read()
+        first, tail = contents.split('\n\n', 1)
+        first = deb822.Deb822(first.splitlines())
+        source = first['Source']
+        if first.get('Vcs-Svn') or first.get('Vcs-Browser'):
+            continue
+        first['Vcs-Svn']  = 'svn://svn.debian.org/{team}/packages/{source}/trunk/'.format(team=team, source=source)
+        first['Vcs-Browser'] = 'http://svn.debian.org/viewsvn/{team}/packages/{source}/trunk/'.format(team=team, source=source)
+        with open('{base}/debian/control'.format(base=path), 'w') as file:
+            print >>file, unicode(first).encode('UTF-8')
+            print >>file, tail,
+        def cd(path=path):
+            os.chdir(path)
+        ipc.check_call(['dch', '--release-heuristic', 'changelog', 'Add Vcs-* fields.'], preexec_fn=cd)
+
+if __name__ == '__main__':
+    main()
+
+# vim:ts=4 sw=4 et
