@@ -39,7 +39,7 @@ def main():
         source = first['Source']
         if first.get('Vcs-Svn') or first.get('Vcs-Browser'):
             continue
-        first['Vcs-Svn']  = 'svn://svn.debian.org/{team}/packages/{source}/trunk/'.format(team=team, source=source)
+        first['Vcs-Svn'] = 'svn://svn.debian.org/{team}/packages/{source}/trunk/'.format(team=team, source=source)
         first['Vcs-Browser'] = 'http://svn.debian.org/viewsvn/{team}/packages/{source}/trunk/'.format(team=team, source=source)
         with open('{base}/debian/control'.format(base=path), 'w') as file:
             print >>file, unicode(first).encode('UTF-8')
