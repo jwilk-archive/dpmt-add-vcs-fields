@@ -8,16 +8,24 @@
 
 import argparse
 import os
-import sys
+import re
 import subprocess as ipc
+import sys
 
 import debian.deb822 as deb822
 
 TEAMS = ['python-modules', 'python-apps']
 
+def canonicalize(s):
+    orig_s = s
+    s = re.sub('svn://svn[.]debian[.]org/(?:svn/)?(.*[^/])/?', r'svn://anonscm.debian.org/\1/', s)
+    s = re.sub('http://svn[.]debian[.]org/(?:viewsvn|viewvc|wsvn|websvn)/(.*[^/])/?', r'http://anonscm.debian.org/viewvc/\1/', s)
+    return s
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--team', choices=TEAMS)
+    parser.add_argument('--canonicalize', action='store_true')
     parser.add_argument('paths', metavar='PACKAGE-DIRECTORY', nargs='+')
     options = parser.parse_args()
     for path in options.paths:
@@ -38,23 +46,32 @@ def main():
         first, tail = contents.split('\n\n', 1)
         first = deb822.Deb822(first.splitlines())
         source = first['Source']
-        dirty = False
+        messages = set()
         vcs_svn = first.get('Vcs-Svn')
         vcs_browser = first.get('Vcs-Browser')
         if not vcs_svn:
             first['Vcs-Svn'] = 'svn://anonscm.debian.org/{team}/packages/{source}/trunk/'.format(team=team, source=source)
-            dirty = True
+            messages.add('Add Vcs-* fields.')
+        elif options.canonicalize:
+            first['Vcs-Svn'] = canonicalize(vcs_svn)
+            if first['Vcs-Svn'] != vcs_svn:
+                messages.add('Use canonical URIs for Vcs-* fields.')
         if not vcs_browser:
             first['Vcs-Browser'] = 'http://anonscm.debian.org/viewvc/{team}/packages/{source}/trunk/'.format(team=team, source=source)
-            dirty = True
-        if not dirty:
+            messages.add('Add Vcs-* fields.')
+        elif options.canonicalize:
+            first['Vcs-Browser'] = canonicalize(vcs_browser)
+            if first['Vcs-Browser'] != vcs_browser:
+                messages.add('Use canonical URIs for Vcs-* fields.')
+        if not messages:
             continue
         with open('{base}/debian/control'.format(base=path), 'w') as file:
             print >>file, unicode(first).encode('UTF-8')
             print >>file, tail,
         def cd(path=path):
             os.chdir(path)
-        ipc.check_call(['dch', '--release-heuristic', 'changelog', 'Add Vcs-* fields.'], preexec_fn=cd)
+        for message in sorted(messages):
+            ipc.check_call(['dch', '--release-heuristic', 'changelog', message], preexec_fn=cd)
 
 if __name__ == '__main__':
     main()
